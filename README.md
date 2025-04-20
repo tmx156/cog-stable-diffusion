@@ -1,13 +1,32 @@
-# Stable Diffusion v2 Cog model
+import os
+import io
+import requests
+from diffusers import StableDiffusionPipeline
+import torch
+from PIL import Image
 
-[![Replicate](https://replicate.com/stability-ai/stable-diffusion/badge)](https://replicate.com/stability-ai/stable-diffusion) 
+def download_lora(lora_url):
+    local_path = "/tmp/lora.safetensors"
+    r = requests.get(lora_url)
+    r.raise_for_status()
+    with open(local_path, "wb") as f:
+        f.write(r.content)
+    return local_path
 
-This is an implementation of the [Diffusers Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) as a Cog model. [Cog packages machine learning models as standard containers.](https://github.com/replicate/cog)
+def predict(prompt: str, lora_url: str = None):
+    # Load the base Flux model from Hugging Face
+    pipe = StableDiffusionPipeline.from_pretrained(
+        "stabilityai/stable-diffusion-2-1-base",  # Replace with actual Flux path if needed
+        torch_dtype=torch.float16
+    ).to("cuda")
 
-First, download the pre-trained weights:
+    if lora_url:
+        lora_path = download_lora(lora_url)
+        pipe.load_lora_weights(lora_path)
 
-    cog run script/download-weights 
+    image = pipe(prompt, num_inference_steps=30, guidance_scale=7.5).images[0]
 
-Then, you can run predictions:
-
-    cog predict -i prompt="monkey scuba diving"
+    # Return image as bytes
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
